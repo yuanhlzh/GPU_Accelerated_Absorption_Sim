@@ -1,0 +1,11 @@
+DBDir/CH4.header
+DBDir/CH4.data
+__pycache__/hapi.cpython-312.pyc
+__pycache__/hapi.cpython-311.pyc
+__pycache__/gaas_ocl.cpython-312.pyc
+__pycache__/gaas_ocl.cpython-311.pyc
+tipsDB/__pycache__/genTIPSFile.cpython-312.pyc
+pyOpenclVersion/opencl/__pycache__/GAASOpenCL.cpython-312.pyc
+.vscode/launch.json
+published_validation/__pycache__/htpValidation.cpython-312.pyc
+published_validation/__pycache__/hapiValidationFunctions.cpython-312.pyc

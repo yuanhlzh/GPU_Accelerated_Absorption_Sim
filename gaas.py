@@ -145,6 +145,7 @@ class HTPFeatureData:
     def getDataTuple(self):
         return (self.dataList[0],self.dataList[1],self.dataList[2],self.dataList[3],self.dataList[4],self.dataList[5],self.dataList[6],self.dataList[7])
 
+
 def simHTP(features, tempK, molarMass, wavenumStep, startWavenum, endWavenum):
     """
     Runs HTP simulation using GAAS, simulates each feature in features to produce an absorbance spectrum and wavenumber array
@@ -161,3 +162,31 @@ def simHTP(features, tempK, molarMass, wavenumStep, startWavenum, endWavenum):
         features_arg.append(f.getDataTuple())
     
     return gaasAPI.sim_htp(features_arg, tempK, molarMass, wavenumStep, startWavenum, endWavenum)
+
+
+class SDVFeatureData:
+    #used to pass a list of feature data objects to simHTP
+    
+    def __init__(self, linecenter: float, Gam0: float, Gam2: float, Delta0: float, Delta2: float, YRosen: float, lineIntensity: float) -> None:
+        self.dataList = [linecenter,Gam0,Gam2,Delta0,Delta2,YRosen, lineIntensity]
+
+    def getDataTuple(self):
+        return (self.dataList[0],self.dataList[1],self.dataList[2],self.dataList[3],self.dataList[4],self.dataList[5], self.dataList[6])
+
+
+def simSDV(features, tempK, molarMass, wavenumStep, startWavenum, endWavenum):
+    """
+    Runs HTP simulation using GAAS, simulates each feature in features to produce an absorbance spectrum and wavenumber array
+    :param features: list of HTPFeatureData objects
+    :param tempK: temperature in Kelvin
+    :param molarMass: molar mass of absorber
+    :param wavenumStep: wavenumber resolution
+    :param startWavenum: wavenumber range start
+    :param endWavenum: wavenumber range end
+    :return: (spectrum, wavenums)
+    """
+    features_arg = []
+    for f in features:
+        features_arg.append(f.getDataTuple())
+    
+    return gaasAPI.sim_SDV(features_arg, tempK, molarMass, wavenumStep, startWavenum, endWavenum)

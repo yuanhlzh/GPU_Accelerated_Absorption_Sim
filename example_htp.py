@@ -47,9 +47,23 @@ wvnh, spech = htpVal.hapiSimHTP(feat_data,tempK,molarMass,wavenumStep,startWaven
 hapiTime = time.time()-t0
 print("hapi time: ",hapiTime)
 print("GAAS is ",hapiTime/gaasTime, " times faster")
-plt.plot(spec)
-plt.plot(spech)
-plt.plot((spec-spech))
-plt.legend(("GAAS","HAPI","Residual"))
-plt.title("Synthetic HTP Spectrum Comparison")
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+idx0 = 0
+idx1 = len(spec)-1
+# --- TOP SUBPLOT: GAAS & HAPI ---
+ax1.plot(wvn[idx0:idx1], spec[idx0:idx1], label="GAAS")
+ax1.plot(wvnh[idx0:idx1], spech[idx0:idx1], label="HAPI")
+ax1.legend()
+ax1.set_title("Synthetic HTP Spectrum Comparison")
+ax1.set_ylabel("Absorbance")
+
+# --- BOTTOM SUBPLOT: Residual ---
+ax2.plot(wvn[idx0:idx1], spec[idx0:idx1] - spech[idx0:idx1], label="Residual")
+ax2.legend()
+ax2.set_xlabel("Wavenumber")
+ax2.set_ylabel("Residual")
+
+plt.tight_layout()
 plt.show()

@@ -99,6 +99,19 @@ class Gaas_OCL_API:
                 ('eta','<f8'),
                 ('lineIntensity','<f8')]
     
+    def getSDVDBStructDatatype(self):
+        """
+            Returns the SDV feature database numpy data structure which is compatible with the OpenCL code
+        """
+        return [('transWavenum','<f8'),
+                ('Gam0','<f8'),
+                ('Gam2','<f8'),
+                ('Delta0','<f8'),
+                ('Delta2','<f8'),
+                ('YRosen','<f8'),
+                ('lineIntensity','<f8')]
+
+
     def voigtSim(self, 
                 featureDatabase : np.array,
                 temp : float,
@@ -257,6 +270,70 @@ class Gaas_OCL_API:
         abs_np = np.empty_like(wvn_np)
         cl.enqueue_copy(self.queue, abs_np, abs_g)
         return (wvn_np,abs_np)
+
+    def SDVSim( self, 
+            featureDatabase : np.array,
+            temp : float,
+            wvnStart : float,
+            wvnStep : float,
+            wvnEnd : float,
+            molarMass : float
+            ):
+    
+        magic_numbers = [2000,6000,8000,16000,32000,64000] #for some reason, running in batches of this many lines at a time is orders of magnitude faster 
+        magic_num = 2000
+
+        wvn_np  = np.arange(wvnStart,wvnEnd,wvnStep).astype(np.float64)
+
+        wvn_g = cl.Buffer(self.ctx, self.mf.READ_ONLY | self.mf.COPY_HOST_PTR, wvn_np.nbytes, hostbuf = wvn_np) #wvns
+        
+         # Allocate complex output buffer
+        out_np = np.zeros(wvn_np.size, dtype=np.complex128)
+        
+        out_g = cl.Buffer(self.ctx,
+                      self.mf.WRITE_ONLY,
+                      out_np.nbytes)
+
+        # abs_g = cl.Buffer(self.ctx, self.mf.WRITE_ONLY, wvn_np.nbytes) #absorbance
+
+        zero16 = np.zeros(1, dtype=np.complex128)  # 16 bytes = 128 bits
+        cl.enqueue_fill_buffer(self.queue, out_g, zero16.tobytes(), 0, out_np.nbytes)
+
+        db_g = cl.Buffer(self.ctx, self.mf.READ_ONLY | self.mf.COPY_HOST_PTR, featureDatabase.nbytes, hostbuf = featureDatabase) #feature DB
+
+        knl = self.prg.lineshapeSDV
+
+        offset = 0
+        numFeats = featureDatabase.size
+        while(offset<=np.size(featureDatabase)):
+            nleft = numFeats-offset
+            #find magic number
+            magic_num = magic_numbers[0]
+            if(nleft > magic_numbers[-1]):
+                magic_num = magic_numbers[-1]
+            else:
+                for i in range(len(magic_numbers)-1):
+                    if(nleft >= magic_numbers[i] and nleft <= magic_numbers[i+1]):
+                        magic_num = magic_numbers[i]
+
+            kernelSize = min(nleft,magic_num)
+            if(kernelSize == 0):
+                break
+            knl(self.queue,(kernelSize,1),None,
+                wvn_g,
+                db_g,
+                out_g,
+                np.float64(temp),
+                np.float64(wvnStart),
+                np.float64(wvnStep),
+                np.int32(wvn_np.size),
+                np.float64(molarMass),
+                np.int32(offset))
+            offset+=magic_num
+        # abs_np = np.empty_like(wvn_np)
+        cl.enqueue_copy(self.queue, out_np, out_g)
+        return (wvn_np,out_np)
+
 
     #maps molecule id to molar mass and isotope abundance
     molMassMap = {"H2O1" : 18.010565 ,  "H2O2" : 20.014811 ,  "H2O3" : 19.01478 ,  "H2O4" : 19.01674 ,  "H2O5" : 21.020985 ,  "H2O6" : 20.020956 ,  "H2O7" : 20.022915 ,  "CO21" : 43.98983 ,  "CO22" : 44.993185 ,  "CO23" : 45.994076 ,  "CO24" : 44.994045 ,  "CO25" : 46.997431 ,  "CO26" : 45.9974 ,  "CO27" : 47.99832 ,  "CO28" : 46.998291 ,  "CO29" : 45.998262 ,  "CO210" : 49.001675 ,  "CO211" : 48.001646 ,  "CO212" : 47.001618 ,  "O31" : 47.984745 ,  "O32" : 49.988991 ,  "O33" : 49.988991 ,  "O34" : 48.98896 ,  "O35" : 48.98896 ,  "N2O1" : 44.001062 ,  "N2O2" : 44.998096 ,  "N2O3" : 44.998096 ,  "N2O4" : 46.005308 ,  "N2O5" : 45.005278 ,  "CO1" : 27.994915 ,  "CO2" : 28.99827 ,  "CO3" : 29.999161 ,  "CO4" : 28.99913 ,  "CO5" : 31.002516 ,  "CO6" : 30.002485 ,  "CH41" : 16.0313 ,  "CH42" : 17.034655 ,  "CH43" : 17.037475 ,  "CH44" : 18.04083 ,  "O21" : 31.98983 ,  "O22" : 33.994076 ,  "O23" : 32.994045 ,  "NO1" : 29.997989 ,  "NO2" : 30.995023 ,  "NO3" : 32.002234 ,  "SO21" : 63.961901 ,  "SO22" : 65.957695 ,  "SO23" : 64.961286 ,  "SO24" : 65.966146 ,  "NO21" : 45.992904 ,  "NO22" : 46.989938 ,  "NH31" : 17.026549 ,  "NH32" : 18.023583 ,  "HNO31" : 62.995644 ,  "HNO32" : 63.992678 ,  "OH1" : 17.00274 ,  "OH2" : 19.006986 ,  "OH3" : 18.008915 ,  "HF1" : 20.006229 ,  "HF2" : 21.012404 ,  "HCl1" : 35.976678 ,  "HCl2" : 37.973729 ,  "HCl3" : 36.982853 ,  "HCl4" : 38.979904 ,  "HBr1" : 79.92616 ,  "HBr2" : 81.924115 ,  "HBr3" : 80.932336 ,  "HBr4" : 82.930289 ,  "HI1" : 127.912297 ,  "HI2" : 128.918472 ,  "ClO1" : 50.963768 ,  "ClO2" : 52.960819 ,  "OCS1" : 59.966986 ,  "OCS2" : 61.96278 ,  "OCS3" : 60.970341 ,  "OCS4" : 60.966371 ,  "OCS5" : 61.971231 ,  "OCS6" : 62.966137 ,  "H2CO1" : 30.010565 ,  "H2CO2" : 31.01392 ,  "H2CO3" : 32.014811 ,  "HOCl1" : 51.971593 ,  "HOCl2" : 53.968644 ,  "N21" : 28.006148 ,  "N22" : 29.003182 ,  "HCN1" : 27.010899 ,  "HCN2" : 28.014254 ,  "HCN3" : 28.007933 ,  "CH3Cl1" : 49.992328 ,  "CH3Cl2" : 51.989379 ,  "H2O21" : 34.00548 ,  "C2H21" : 26.01565 ,  "C2H22" : 27.019005 ,  "C2H23" : 27.021825 ,  "C2H61" : 30.04695 ,  "C2H62" : 31.050305 ,  "PH31" : 33.997241 ,  "COF21" : 65.991722 ,  "COF22" : 66.995078 ,  "SF61" : 145.962494 ,  "H2S1" : 33.987721 ,  "H2S2" : 35.983515 ,  "H2S3" : 34.987105 ,  "HCOOH1" : 46.00548 ,  "HO21" : 32.997655 ,  "O1" : 15.994915 ,  "ClONO21" : 96.956672 ,  "ClONO22" : 98.953723 ,  "NO+1" : 29.997989 ,  "HOBr1" : 95.921076 ,  "HOBr2" : 97.91903 ,  "C2H41" : 28.0313 ,  "C2H42" : 29.034655 ,  "CH3OH1" : 32.026215 ,  "CH3Br1" : 93.941811 ,  "CH3Br2" : 95.939764 ,  "CH3CN1" : 41.026549 ,  "CF41" : 87.993616 ,  "C4H21" : 50.01565 ,  "HC3N1" : 51.010899 ,  "H21" : 2.01565 ,  "H22" : 3.021825 ,  "CS1" : 43.97207 ,  "CS2" : 45.967866 ,  "CS3" : 44.975425 ,  "CS4" : 44.971456 ,  "SO31" : 79.956815 ,  "C2N21" : 52.006148 ,  "COCl21" : 97.93262 ,  "COCl22" : 99.929672 ,  "SO1" : 47.966986 ,  "SO2" : 49.962782 ,  "SO3" : 49.971231 ,  "CH3F1" : 34.021878 ,  "GeH41" : 77.952479 ,  "GeH42" : 75.95338 ,  "GeH43" : 73.95555 ,  "GeH44" : 76.954764 ,  "GeH45" : 79.952703 ,  "CS21" : 75.94414 ,  "CS22" : 77.939936 ,  "CS23" : 76.943526 ,  "CS24" : 76.947495 ,  "CH3I1" : 141.927947 ,  "NF31" : 70.998286}

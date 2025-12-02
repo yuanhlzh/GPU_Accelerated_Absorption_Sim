@@ -312,6 +312,43 @@ def simHTP(features, tempK, molarMass, wavenumStep, startWavenum, endWavenum):
     
     return g_api.HTPSim(dbArray,tempK,startWavenum,wavenumStep,endWavenum,molarMass)
 
+
+class SDVFeatureData:
+    #used to pass a list of feature data objects to simHTP
+    
+    def __init__(self, linecenter: float, Gam0: float, Gam2: float, Delta0: float, Delta2: float, YRosen: float, lineIntensity: float) -> None:
+        self.dataList = [linecenter,Gam0,Gam2,Delta0,Delta2,YRosen, lineIntensity]
+
+    def getDataTuple(self):
+        return (self.dataList[0],self.dataList[1],self.dataList[2],self.dataList[3],self.dataList[4],self.dataList[5],self.dataList[6])
+
+def simSDV(features, tempK, molarMass, wavenumStep, startWavenum, endWavenum):
+    """
+    Runs SDV simulation using GAAS, simulates each feature in features to produce an complex spectrum and wavenumber array
+    :param features: list of SDVFeatureData objects
+    :param tempK: temperature in Kelvin
+    :param molarMass: molar mass of absorber
+    :param wavenumStep: wavenumber resolution
+    :param startWavenum: wavenumber range start
+    :param endWavenum: wavenumber range end
+    :return: (spectrum, wavenums)
+    """
+    SDV_dbtype = g_api.getSDVDBStructDatatype()
+    dbArray = np.empty(len(features),dtype=SDV_dbtype)
+
+# [linecenter,Gam0,Gam2,Delta0,Delta2,lineIntensity]
+    for i in range(len(features)):
+        dbArray[i]['transWavenum'] = features[i].dataList[0]
+        dbArray[i]['Gam0'] =         features[i].dataList[1]
+        dbArray[i]['Gam2'] =         features[i].dataList[2]
+        dbArray[i]['Delta0'] =       features[i].dataList[3]
+        dbArray[i]['Delta2'] =       features[i].dataList[4]
+        dbArray[i]['YRosen'] =       features[i].dataList[5]
+        dbArray[i]['lineIntensity'] =features[i].dataList[6]
+    
+    return g_api.SDVSim(dbArray,tempK,startWavenum,wavenumStep,endWavenum,molarMass)
+
+
 def gen_abs_db_ht(moleculeID, isotopologueNum, minWavenum, maxWavenum, parDirectory, strengthCutoff=0, loadFromHITRAN=False):
     """
     Generates absorption database for hartmann tran profiles

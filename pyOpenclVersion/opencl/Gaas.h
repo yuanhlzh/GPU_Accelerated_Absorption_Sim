@@ -253,6 +253,32 @@ __kernel void lineshapeHTP(__global const double *wavenums,
 							double molarMass,
 							int offset);
 
+
+struct featureDataSDV
+{ //absorption feature database for SDV profile
+    double linecenter; //line center (wavenumber), 32b double only has ~7 decimals of precision, too low to accurately position line
+    double Gam0; //Gamma0
+    double Gam2; //Gamma2
+    double Delta0; //shift0
+    double Delta2; //shift2
+	double YRosen; // Line mixing
+    double lineIntensity; //line intensity
+};
+
+
+
+
+__kernel void lineshapeSDV(__global const double *wavenums, 
+							__global const struct featureDataSDV *database, 
+							__global struct clComplex *output, 
+							double tempK, 
+							double startWavenum, 
+							double wavenumStep, 
+							int wavenumCount, 
+							double molarMass,
+							int offset);
+
+
 // fadeeva function
 struct clComplex w(struct clComplex z);
 

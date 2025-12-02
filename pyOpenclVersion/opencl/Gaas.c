@@ -1754,3 +1754,123 @@ __kernel void lineshapeHTP(__global  const double *wavenums,
 		atomic_add_d((output + minInd + i), result);
 	}
 }
+
+
+
+	__kernel void lineshapeSDV(__global  const double *wavenums, 
+							__global const struct featureDataSDV *database, 
+							__global struct clComplex *output, 
+							double tempK, 
+							double startWavenum, 
+							double wavenumStep, 
+							int wavenumCount, 
+							double molarMass,
+							int offset )
+{
+	double cl = 299792458.f;				  // speed of light
+	double kb = 1.3806488e-23f;			  // Boltzmann constant
+	double uma = 1.660538921e-27f;		  // atomic mass unit
+	double amM1 = molarMass;				  // molar mass
+	double M = amM1 * uma;				  // mass of absorber in kg
+	double va0 = sqrt(2 * kb * tempK / M); // most probable speed of molecules with mass M
+
+	// feature index
+
+	int thread_ind = get_global_id(0) + offset; 
+
+	// feature global variables
+
+	// doppler width
+	double gammaD = dopplerHWHM(database[thread_ind].linecenter, molarMass, tempK);
+
+	// bounds
+	double maxHW = doubleMax(gammaD, doubleMax(database[thread_ind].Gam0, database[thread_ind].Gam2));
+	double minWavenum = database[thread_ind].linecenter - maxHW * WAVENUM_WING;
+	double maxWavenum = database[thread_ind].linecenter + maxHW * WAVENUM_WING;
+	int minInd = toWavenumIndex(startWavenum, wavenumStep, minWavenum); // the +1 makes this equivalent to hapi
+	int maxInd = toWavenumIndex(startWavenum, wavenumStep, maxWavenum);
+
+	// clamps indices to the edges
+	if (minInd < 0)
+	{
+		minInd = 0;
+	}
+	if (maxInd >= wavenumCount)
+	{
+		maxInd = wavenumCount - 1;
+	}
+
+	cmplx C0 = C(database[thread_ind].Gam0, database[thread_ind].Delta0);
+	cmplx C2 = C(database[thread_ind].Gam2, database[thread_ind].Delta2);
+
+
+
+	// cmplx C0t = (1.0f - database[thread_ind].eta) * (C0 - 3.0f * C2 / 2.0f) + database[thread_ind].anuVC; 
+	cmplx C0t = clSub(C0, clMul(C(3.0f/2.0f,0),C2));
+	//cmplx C0t = clAdd(clMul(C(1.0f - database[thread_ind].eta,0), clSub(C0, clMul(C(3.0f/2.0f,0),C2))), C(database[thread_ind].anuVC,0));
+	cmplx C2t = C2;
+
+	//			 (database[thread_ind].linecenter * va0 / (2.0f * cl * C2t));
+	cmplx temp = clDiv(C((database[thread_ind].linecenter * va0),0), clMul(C(2.0f * cl,0), C2t));
+	cmplx Y = clMul(temp,temp);
+	cmplx sqrtY = temp;
+	cmplx sqrtXY = C(0,0);
+
+	int N = maxInd - minInd;
+
+	// per wavenumber local variables
+	cmplx X;
+	cmplx Zp;
+	cmplx Zm;
+	cmplx FadZp;
+	cmplx FadZm;
+	//cmplx BHTP_1;
+	//cmplx BHTP_2;
+	//cmplx BHTP_3;
+	//cmplx BHTP;
+	cmplx AHTP;
+	//cmplx LineBot1;
+	//cmplx LineBot2;
+	//cmplx LineBot;
+
+	for (int i = 0; i < N; i++)
+	{
+		
+		//X = (thrust::complex<float>(0.0,1.0)*(database[thread_ind].linecenter - wavenums[minInd+i]) + C0t)/C2t;
+		X = clDiv(clAdd(clMul(C(0.0f,1.0f),C(database[thread_ind].linecenter - wavenums[minInd+i],0)),C0t),C2t);
+		
+		sqrtXY = clSqrt(clAdd(X,Y));
+		// Zm = sqrtXY - sqrtY;
+		Zm = clSub(sqrtXY, sqrtY);
+		// Zp = sqrtXY + sqrtY;
+		Zp = clAdd(sqrtXY, sqrtY);
+
+		// FadZm
+		// thrust::complex<double> arg = thrust::complex<double>(0, 1) * Zm;
+		cmplx arg = clMul(C(0.0f,1.0f),Zm);
+		cmplx argcdc = C(clReal(arg), clImag(arg));
+		cmplx rescdc = w(argcdc);
+		FadZm = C(clReal(rescdc), clImag(rescdc));
+
+		// FadZp
+		arg = clMul(C(0.0f, 1.0f) , Zp);
+		argcdc = C(clReal(arg), clImag(arg));
+		rescdc = w(argcdc);
+		FadZp = C(clReal(rescdc), clImag(rescdc));
+
+		AHTP = clDiv(clMul(C(SQRT_PI*cl,0), clSub(FadZm, FadZp)), C(database[thread_ind].linecenter * va0, 0));
+
+		// Apply Rosen correction:
+		AHTP = C(clReal(AHTP) + database[thread_ind].YRosen * clImag(AHTP),	clImag(AHTP));
+		
+		// Multiply by intensity
+		AHTP = clMul(AHTP, C((1.0 / M_PI) * database[thread_ind].lineIntensity, 0));
+
+		// Atomic accumulate REAL and IMAG into output array
+		atomic_add_d(&output[minInd + i].re, clReal(AHTP));
+		atomic_add_d(&output[minInd + i].cmp, clImag(AHTP));
+
+	}
+
+
+}
