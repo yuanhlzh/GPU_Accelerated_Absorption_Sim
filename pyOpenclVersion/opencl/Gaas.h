@@ -74,7 +74,7 @@
 #define AVOGADROS_NUM 6.02214129e23			// mol-1
 #define BOLTZMANN_CONST 1.38064852e-23		// m2 kg s-2 K-1
 #define CBOLTZ_CGS 1.380648813E-16			// CGS units
-#define WAVENUM_WING 50						// how many halfwidths to compute around center of voigt function
+#define WAVENUM_WING 11500						// how many halfwidths to compute around center of voigt function
 #define SQRT_PI 1.77245385091
 #define ONE_OVER_SQRT_PI 0.56418958354
 
@@ -195,6 +195,17 @@ struct featureDataVoigtRaw
 	double gamma0; //lorenzian broadening (HWHM)
 };
 
+struct featureDataVoigtRaw_cmp
+{	//for simulating voigt profiles using the raw lineshape parameters
+	double integratedArea;
+	double transWavenum;
+	double gammaD; //doppler (gaussian) broadening (HWHM)
+	double gamma0; //lorenzian broadening (HWHM)
+	double delta0;
+	double YRosen; // line mixing parameter 
+};
+
+
 double dopplerHWHM(double transWavenum, double molarMass, double tempKelvin);
 
 double lorentzianHWHM(double tempK, double pressureAtm, double pSelf,
@@ -220,6 +231,8 @@ __kernel void lineshapeVoigt(__global const double *wavenums,
 							double isotopeAbundance,
 							int offset);
 
+
+							
 __kernel void lineshapeVoigt_raw(__global const double *wavenums,
 							__global const struct featureDataVoigtRaw *features, 
 							__global double *output, 
@@ -227,6 +240,15 @@ __kernel void lineshapeVoigt_raw(__global const double *wavenums,
 							double wavenumStep, 
 							int wavenumCount,
 							int offset);
+
+__kernel void lineshapeVoigt_raw_cmp(__global const double *wavenums,
+							__global const struct featureDataVoigtRaw_cmp *features, 
+							__global struct clComplex *output, 
+							double startWavenum, 
+							double wavenumStep, 
+							int wavenumCount,
+							int offset);
+
 
 // return the larger of the two values
 double doubleMax(double f1, double f2);
@@ -283,6 +305,8 @@ __kernel void lineshapeSDV(__global const double *wavenums,
 struct clComplex w(struct clComplex z);
 
 double voigtSingle(double x, double gaussianHWHM, double lorentzHWHM);
+
+struct clComplex voigtSingle_cmp(double x, double gaussianHWHM, double lorentzHWHM);
 
 void __attribute__((always_inline)) atomic_add_f(volatile global float* addr, const float val) {
     union {

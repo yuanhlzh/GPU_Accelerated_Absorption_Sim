@@ -22,6 +22,7 @@
 # import gaas as gs
 import gaas_ocl as gs
 import os
+os.environ["GAAS_OCL_DEVICE"] = '0' #set to the device number you want to use if you have multiple GPUs
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,7 +37,7 @@ tempK = 300
 feat_wavenums = np.linspace(startWavenum,endWavenum,3000) #generate 3000 evenly spaced transitions between 7000 and 18000
 feat_data = []
 for lc in feat_wavenums[:-1]:
-    feat_data.append(gs.SDVFeatureData(lc,0.5,0.1,0.1,0.1,0.0,1.0))
+    feat_data.append(gs.SDVFeatureData(lc,0.5,0.1,0.1,0.1,0.1,1.0))
 t0 = time.time()
 wvn, spec = gs.simSDV(feat_data,tempK,molarMass,wavenumStep,startWavenum,endWavenum)
 gaasTime = time.time()-t0

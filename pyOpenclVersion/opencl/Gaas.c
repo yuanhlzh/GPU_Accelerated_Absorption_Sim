@@ -1476,6 +1476,22 @@ double voigtSingle(double x, double gaussianHWHM, double lorentzHWHM)
 	
 }
 
+struct clComplex voigtSingle_cmp(double x, double gaussianHWHM, double lorentzHWHM)
+{
+	double hwhmToSigmaFactor = 0.8493218003;
+	double sigma = gaussianHWHM * hwhmToSigmaFactor;
+	double gamma = lorentzHWHM;
+
+	cmplx zNum = C(x, gamma);
+	cmplx zDen = C(sigma * ROOT2, 0);
+	cmplx z = clDiv(zNum, zDen);
+	cmplx resDen = C(1/(sigma * ROOT2PI),0);
+	return clMul(w(z), resDen);
+	
+}
+
+
+
 __kernel void voigtTest(__global double *output, __global const double *input)
 {
 	int i = get_global_id(0);
@@ -1571,6 +1587,8 @@ __kernel void lineshapeVoigt(__global const double *wavenums,
 	}
 }
 
+
+
 __kernel void lineshapeVoigt_raw(__global const double *wavenums,
 							__global const struct featureDataVoigtRaw *features, 
 							__global double *output, 
@@ -1616,6 +1634,61 @@ __kernel void lineshapeVoigt_raw(__global const double *wavenums,
 		// output[specInd] = output[specInd] + currentVal ;
 	}
 }
+
+__kernel void lineshapeVoigt_raw_cmp(__global const double *wavenums,
+							__global const struct featureDataVoigtRaw_cmp *features, 
+							__global struct clComplex *output, 
+							double startWavenum, 
+							double wavenumStep, 
+							int wavenumCount,
+							int offset){
+										
+	int i = get_global_id(0) + offset;
+	// compute voigt parameters:
+	double dopHWHM = features[i].gammaD;
+	double lorHWHM = features[i].gamma0;
+	double strength = features[i].integratedArea;
+
+	// determine bounds (range in output array where the absorbance of this feature is non-negligible)
+	double maxHW = doubleMax(dopHWHM, lorHWHM);
+	double minWavenum = features[i].transWavenum - maxHW * WAVENUM_WING;
+	double maxWavenum = features[i].transWavenum + maxHW * WAVENUM_WING;
+	int minInd = toWavenumIndex(startWavenum, wavenumStep, minWavenum)+1;
+	int maxInd = toWavenumIndex(startWavenum, wavenumStep, maxWavenum);
+
+	// minInd = (int)(minInd>0)*minInd;
+	// maxInd = (int)(maxInd >= wavenumCount)*(wavenumCount - 1) + (int)(maxInd < wavenumCount)*(maxInd);
+
+	if (minInd < 0)
+	{
+		minInd = 0;
+	}
+	if (maxInd >= wavenumCount)
+	{
+		maxInd = wavenumCount - 1;
+	}
+
+	// add lineshape to output
+	cmplx currentVal;
+	double adjWavenum;
+
+	for (int specInd = minInd; specInd <= maxInd; specInd++)
+	{
+		adjWavenum = (wavenums[specInd] - (features[i].transWavenum + features[i].delta0));
+		
+		currentVal = clMul(voigtSingle_cmp(adjWavenum, dopHWHM, lorHWHM), C(strength, 0));
+
+		currentVal = C(clReal(currentVal) + features[i].YRosen * clImag(currentVal), clImag(currentVal));
+
+		// currentVal = 1.0;
+		atomic_add_d(&output[specInd].re, clReal(currentVal));
+		atomic_add_d(&output[specInd].cmp, clImag(currentVal));
+		//atomic_add_d((output + specInd), currentVal);
+		// output[specInd] = output[specInd] + currentVal ;
+	}
+}
+
+
 
 double doubleMax(double f1, double f2){
 	{
@@ -1802,13 +1875,15 @@ __kernel void lineshapeHTP(__global  const double *wavenums,
 
 	cmplx C0 = C(database[thread_ind].Gam0, database[thread_ind].Delta0);
 	cmplx C2 = C(database[thread_ind].Gam2, database[thread_ind].Delta2);
-
-
+	
+	
 
 	// cmplx C0t = (1.0f - database[thread_ind].eta) * (C0 - 3.0f * C2 / 2.0f) + database[thread_ind].anuVC; 
 	cmplx C0t = clSub(C0, clMul(C(3.0f/2.0f,0),C2));
 	//cmplx C0t = clAdd(clMul(C(1.0f - database[thread_ind].eta,0), clSub(C0, clMul(C(3.0f/2.0f,0),C2))), C(database[thread_ind].anuVC,0));
 	cmplx C2t = C2;
+
+	
 
 	//			 (database[thread_ind].linecenter * va0 / (2.0f * cl * C2t));
 	cmplx temp = clDiv(C((database[thread_ind].linecenter * va0),0), clMul(C(2.0f * cl,0), C2t));
